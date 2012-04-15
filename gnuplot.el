@@ -2118,6 +2118,7 @@ buffer."
 	(process-kill-without-query gnuplot-process nil)
 	(with-current-buffer gnuplot-buffer
 	  (gnuplot-comint-mode)
+          (gnuplot-inline-image-mode gnuplot-inline-image-mode)
 	  (message "Starting gnuplot plotting program...Done")))))
 
 (defun gnuplot-fetch-version-number ()
@@ -2176,6 +2177,10 @@ defaults to 3.7."
 	   gnuplot-version gnuplot-program-version
 	   (substitute-command-keys "\\[gnuplot-bug-report]")))
 
+(defvar gnuplot-prompt-regexp
+  (regexp-opt '("gnuplot> " "multiplot> "))
+  "Regexp for recognizing the GNUPLOT prompt")
+
 (defun gnuplot-protect-prompt-fn (string)
   "Prevent the Gnuplot prompt from being deleted or overwritten.
 STRING is the text as originally inserted in the comint buffer."
@@ -2185,7 +2190,7 @@ STRING is the text as originally inserted in the comint buffer."
                (beginning-of-line)
                (point)))
           e)
-      (if (re-search-forward "^gnuplot> " (point-max) t)
+      (if (re-search-forward gnuplot-prompt-regexp (point-max) t)
           (progn
             (setq e (point))
             (put-text-property b e 'rear-nonsticky '(read-only intangible face))
@@ -2284,16 +2289,24 @@ display."
         (message "Plot output will be displayed in gnuplot buffer.")))))
 		      
 (defun gnuplot-inline-image-set-output ()
-  "Set GNUPLOT's output file to `gnuplot-inline-image-filename'."
+  "Set Gnuplot's output file to `gnuplot-inline-image-filename'."
   (let ((tmp (make-temp-file "gnuplot")))
     (setq gnuplot-inline-image-filename tmp)
     (gnuplot-send-hiding-output (format "set output '%s'\n" tmp))))
   
 (defun gnuplot-insert-inline-image-output (string)
+  "Insert Gnuplot graphical output in the gnuplot-comint buffer.
+
+Called via `comint-preoutput-filter-functions' hook when
+`gnuplot-inline-image-mode' is enabled. Checks the status of the
+file `gnuplot-inline-image-filename'; if it exists and has
+nonzero size, inserts it as an inline image, stores a new
+temporary filename in `gnuplot-inline-image-filename', and
+updates Gnuplot with the appropriate 'set output' command."
   (save-excursion
     (goto-char (point-max))
     (beginning-of-line)
-    (when (looking-at "^gnuplot> ")
+    (when (looking-at gnuplot-prompt-regexp)
       (let* ((filename gnuplot-inline-image-filename)
 	     (size (nth 7 (file-attributes filename))))
 	(if (and size (> size 0))
@@ -2322,7 +2335,7 @@ display."
   (with-current-buffer
       (get-buffer-create gnuplot-hidden-output-buffer)
     (insert string)
-    (when (looking-back "gnuplot> ")
+    (when (looking-back gnuplot-prompt-regexp)
       (with-current-buffer gnuplot-buffer
 	(remove-hook 'comint-preoutput-filter-functions
 		     'gnuplot-discard-output t))))
